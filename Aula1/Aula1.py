@@ -1,6 +1,7 @@
 import cv2
+dir = "/home/bruno/Documentos/Process-IMG/Aula1/"
 
-loadAgt = cv2.CascadeClassifier('haarcascades/haarcascade_frontalface_default.xml')
+loadAgt = cv2.CascadeClassifier(dir+'haarcascades/haarcascade_frontalface_default.xml')
 
 img = cv2.imread('Imagens/img4.jpg')
 imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)

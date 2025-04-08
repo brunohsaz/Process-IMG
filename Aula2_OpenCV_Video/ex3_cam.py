@@ -21,7 +21,7 @@ while True:
     cv2.imshow('Video', frame)
 
     if cv2.waitKey(1) == ord('q'):
-        break;
+        break
 
 webCam.release()
 cv2.destroyAllWindows()

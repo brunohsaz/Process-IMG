@@ -1,9 +1,10 @@
 import cv2
+dir = "/home/bruno/Documentos/Process-IMG/Aula1/"
 
-loadAgtFace = cv2.CascadeClassifier('haarcascades/haarcascade_frontalface_default.xml')
-loadAgtEye = cv2.CascadeClassifier('haarcascades/haarcascade_eye.xml')
+loadAgtFace = cv2.CascadeClassifier(dir+'haarcascades/haarcascade_frontalface_default.xml')
+loadAgtEye = cv2.CascadeClassifier(dir+'haarcascades/haarcascade_eye.xml')
 
-img = cv2.imread('Imagens/img5.jpg')
+img = cv2.imread(dir+'imagens/img5.jpg')
 imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
 faces = loadAgtFace.detectMultiScale(imgGray)
