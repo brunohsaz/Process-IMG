@@ -1,0 +1,6 @@
+path: C:/Users/bruno/OneDrive/Documentos/Process-IMG/Yolo/placas_dataset
+train: images/train
+val: images/val
+
+nc: 1
+names: ['placa']
