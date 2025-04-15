@@ -15,15 +15,19 @@ def detectar_e_recortar_placa(imagem_path, modelo, min_width=50, min_height=20, 
 
         if w >= min_width and h >= min_height:
             coords_filtradas.append([x1, y1, x2, y2])
-            recorte = imagem.crop((x1, y1, x2, y2))
-
-            if salvar:
-                recorte.save(imagem_path.parent / f"placa_{i}.jpg")
-
-            recorte.show()  # Exibe o recorte da placa
 
     return coords_filtradas
 
+def aplicar_cinza_com_tons(imagem_path, coordenadas, niveis=64):
+    imagem = Image.open(imagem_path).convert('RGB')
+    for x1, y1, x2, y2 in coordenadas:
+        regiao = imagem.crop((x1, y1, x2, y2)).convert('L')
+
+        # Reduz o número de tons de cinza onde // arredonda o valor de saída
+        fator = 255 // (niveis - 1)
+        regiao = regiao.point(lambda x: (x // fator) * fator)
+
+    regiao.show()
 
 # --- código principal ---
 base_dir = Path(__file__).resolve().parent
@@ -36,12 +40,10 @@ model.augment = False
 model.force_reload = True
 
 # Caminho da imagem
-imagem = base_dir / 'imagens/teste12.jpg'
+imagem = base_dir / 'imagens/teste14.jpg'
 
 # Detecta e recorta
 coordenadas = detectar_e_recortar_placa(imagem, model, min_width=50, min_height=20)
 
-print('Coordenadas filtradas:', coordenadas)
-
-# Visualiza detecção original
-model(imagem).show()
+# Transformar a região do recorte em tons de cinza
+aplicar_cinza_com_tons(imagem, coordenadas)
