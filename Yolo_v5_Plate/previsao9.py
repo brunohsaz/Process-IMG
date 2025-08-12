@@ -21,6 +21,24 @@ def detectar_e_recortar_placa(frame, modelo, min_width=50, min_height=20):
 
     return coords_filtradas
 
+def aplicar_pre_processamento(frame):    
+    img = frame[y1:y2, x1:x2]
+    
+    # Converte para escala de cinza
+    img_cinza = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Aplica filtro bilateral para suavizar sem perder bordas
+    img_suavizada = cv2.bilateralFilter(img_cinza, d=9, sigmaColor=75, sigmaSpace=75)
+    
+    # Binarização com threshold adaptativo
+    img_thresh = cv2.adaptiveThreshold(
+        img_suavizada,
+        50,
+        255,
+        cv2.THRESH_BINARY
+    )
+    
+    return img_thresh
+
 # --- código principal ---
 base_dir = Path(__file__).resolve().parent
 model = torch.hub.load('ultralytics/yolov5', 'custom', path=base_dir/'best.pt')
@@ -39,6 +57,7 @@ while True:
     if not ret:
         break
 
+    frame = aplicar_pre_processamento(frame)
     coordenadas = detectar_e_recortar_placa(frame, model)
 
     for (x1, y1, x2, y2) in coordenadas:
