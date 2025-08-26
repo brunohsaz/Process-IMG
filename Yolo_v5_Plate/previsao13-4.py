@@ -43,7 +43,7 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.08, crop_ratio_
         img = cv2.resize(img, (800, int(800*img.shape[0]/img.shape[1])))
         img_cinza = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img_suavizada = cv2.bilateralFilter(img_cinza, 9, 75, 75)
-        _, img_thresh = cv2.threshold(img_suavizada, 50, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, img_thresh = cv2.threshold(img_suavizada, 75, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
         img_thresh = cv2.morphologyEx(img_thresh, cv2.MORPH_CLOSE, kernel)
         placas_processadas.append(img_thresh)
@@ -113,10 +113,15 @@ model.augment = False
 frame = cv2.imread(str(base_dir / 'imagens/teste16.jpg'))
 coordenadas = detectar_e_recortar_placa(frame, model)
 placas = aplicar_pre_processamento(frame, coordenadas)
+
+# Mostrar cada placa processada
+for i, placa_proc in enumerate(placas):
+    cv2.imshow(f"Placa Processada {i+1}", placa_proc)
+
 textos = [aplicar_ocr(p) for p in placas]
 textos = consenso_textos(textos)
 desenhar_resultados(frame, coordenadas, textos)
 
-cv2.imshow("Resultado", frame)
+cv2.imshow("Resultado Final", frame)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
