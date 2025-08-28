@@ -1,17 +1,18 @@
 import torch
 from pathlib import Path
 import cv2
-import pytesseract
+import easyocr
 import warnings
 import re
+import numpy as np
 from collections import Counter
 
 warnings.simplefilter("ignore")
 
 base_dir = Path(__file__).resolve().parent
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-OCR_CONFIG = r'-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 --psm 8'
+# --- Configuração OCR (EasyOCR) ---
+reader = easyocr.Reader(['en'], gpu=False)
 
 CORRECOES = {
     '0': ['O', 'Q'], '1': ['I', 'L'], '2': ['Z'], '4': ['A'], '5': ['S'], '6': ['G'], '8': ['B'],
@@ -33,18 +34,16 @@ def detectar_e_recortar_placa(frame, modelo, min_width=50, min_height=20):
             coords_filtradas.append([int(x1), int(y1), int(x2), int(y2)])
     return coords_filtradas
 
-def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.08, crop_ratio_y=0.15, fator_topo=1.4):
+def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.07, crop_ratio_y=0.15, fator_topo=1.4):
     placas_processadas = []
     for x1, y1, x2, y2 in coordenadas:
         largura, altura = x2 - x1, y2 - y1
         margem_x = int(largura * crop_ratio_x)
         margem_y = int(altura * crop_ratio_y)
 
-        # aumentar apenas o corte de cima
         margem_topo = int(margem_y * fator_topo)
-
         x1 = max(0, x1 + margem_x)
-        y1 = max(0, y1 + margem_topo)  # corta mais do topo
+        y1 = max(0, y1 + margem_topo)
         x2 = min(frame.shape[1], x2 - margem_x)
         y2 = min(frame.shape[0], y2 - margem_y)
 
@@ -59,10 +58,80 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.08, crop_ratio_
     return placas_processadas
 
 
-def ocr_imagem(img):
-    texto_normal = pytesseract.image_to_string(img, lang='eng', config=OCR_CONFIG)
-    texto_invertido = pytesseract.image_to_string(cv2.bitwise_not(img), lang='eng', config=OCR_CONFIG)
-    return texto_invertido if len(texto_invertido.strip()) > len(texto_normal.strip()) else texto_normal
+def segmentar_caracteres(img_bin, min_area=100, max_chars=7, debug=False):
+    img_inv = cv2.bitwise_not(img_bin)
+    contornos, _ = cv2.findContours(img_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    candidatos = []
+    altura_img = img_bin.shape[0]
+
+    for cnt in contornos:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = w * h
+        if area < min_area:
+            continue
+        if h < altura_img * 0.4:
+            continue
+        if w > altura_img * 1.2:
+            continue
+        candidatos.append((x, y, w, h))
+
+    candidatos = sorted(candidatos, key=lambda c: c[0])
+    candidatos = candidatos[:max_chars]
+
+    if debug:
+        debug_img = cv2.cvtColor(img_bin, cv2.COLOR_GRAY2BGR)
+        for i, (x, y, w, h) in enumerate(candidatos):
+            cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0, 255, 0), 2)
+            cv2.putText(debug_img, str(i+1), (x, y-5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.imshow("Caracteres Contornados", debug_img)
+
+    return [(x, y, w, h) for (x, y, w, h) in candidatos]
+
+
+# --- NOVO: reconstruir a placa com caracteres recortados ---
+def reconstruir_placa_a_partir_caracteres(img_bin, min_area=100, max_chars=7):
+    candidatos = segmentar_caracteres(img_bin, min_area=min_area, max_chars=max_chars, debug=False)
+
+    if not candidatos:
+        return None
+
+    altura_padrao = 100
+    largura_padrao = 60
+    caracteres_norm = []
+
+    for (x, y, w, h) in candidatos:
+        char_img = img_bin[y:y+h, x:x+w]
+        ch_resized = cv2.resize(char_img, (largura_padrao, altura_padrao))
+        caracteres_norm.append(ch_resized)
+
+    largura_total = largura_padrao * len(caracteres_norm)
+    nova_img = 255 * np.ones((altura_padrao, largura_total), dtype=np.uint8)
+
+    for i, ch in enumerate(caracteres_norm):
+        x_offset = i * largura_padrao
+        nova_img[:, x_offset:x_offset+largura_padrao] = ch
+
+    return nova_img
+
+
+def aplicar_ocr_placa_reconstruida(placa_binaria, mostrar=True):
+    nova_img = reconstruir_placa_a_partir_caracteres(placa_binaria)
+    if nova_img is None:
+        return ""
+
+    if mostrar:
+        cv2.imshow("Placa Reconstruída", nova_img)
+
+    results = reader.readtext(nova_img, detail=0, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    if not results:
+        return ""
+
+    texto = "".join(results)
+    texto = limpar_texto(texto)
+    formato = identificar_formato(texto)
+    return aplicar_correcoes(texto, formato)
+
 
 def limpar_texto(texto):
     return re.sub(r'[^A-Z0-9]', '', texto.strip().upper())
@@ -86,19 +155,12 @@ def aplicar_correcoes(texto, formato):
         else: texto_corrigido += corrigir_char(ch, ch.isalpha())
     return texto_corrigido
 
-def aplicar_ocr(placa_binaria):
-    texto = ocr_imagem(placa_binaria)
-    texto = limpar_texto(texto)
-    formato = identificar_formato(texto)
-    return aplicar_correcoes(texto, formato)
-
 def placas_sao_similares(a,b):
     if len(a)!=len(b): return False
     erros = sum(1 for x,y in zip(a,b) if x!=y)
     return erros <= MAX_ERROS
 
 def consenso_textos(textos):
-    # Remove duplicados parecidos
     textos_validos = []
     for t in textos:
         if t and all(not placas_sao_similares(t,v) for v in textos_validos):
@@ -111,7 +173,7 @@ def desenhar_resultados(frame, coordenadas, textos):
         cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0),2)
         if i < len(textos) and textos[i]:
             cv2.putText(frame,textos[i],(x1,y1-10),cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,0),2)
-            print(f"Placa: {textos[i]}")  # imprime apenas se houver texto
+            print(f"Placa: {textos[i]}")
 
 # --- carregamento do modelo ---
 model = torch.hub.load('ultralytics/yolov5', 'custom', path=base_dir/'best.pt')
@@ -124,11 +186,11 @@ frame = cv2.imread(str(base_dir / 'imagens/teste16.jpg'))
 coordenadas = detectar_e_recortar_placa(frame, model)
 placas = aplicar_pre_processamento(frame, coordenadas)
 
-# Mostrar cada placa processada
 for i, placa_proc in enumerate(placas):
     cv2.imshow(f"Placa Processada {i+1}", placa_proc)
 
-textos = [aplicar_ocr(p) for p in placas]
+# --- OCR reconstruído ---
+textos = [aplicar_ocr_placa_reconstruida(p, mostrar=True) for p in placas]
 textos = consenso_textos(textos)
 desenhar_resultados(frame, coordenadas, textos)
 

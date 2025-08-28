@@ -1,7 +1,7 @@
 import torch
 from pathlib import Path
 import cv2
-import pytesseract
+import easyocr
 import warnings
 import re
 from collections import Counter
@@ -9,9 +9,9 @@ from collections import Counter
 warnings.simplefilter("ignore")
 
 base_dir = Path(__file__).resolve().parent
-# pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-OCR_CONFIG = r'-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 --psm 8'
+# --- Configuração OCR (EasyOCR) ---
+reader = easyocr.Reader(['en'], gpu=False)
 
 CORRECOES = {
     '0': ['O', 'Q'], '1': ['I', 'L'], '2': ['Z'], '4': ['A'], '5': ['S'], '6': ['G'], '8': ['B'],
@@ -59,10 +59,13 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.08, crop_ratio_
     return placas_processadas
 
 
+# --- Alterado para usar EasyOCR ---
 def ocr_imagem(img):
-    texto_normal = pytesseract.image_to_string(img, lang='eng', config=OCR_CONFIG)
-    texto_invertido = pytesseract.image_to_string(cv2.bitwise_not(img), lang='eng', config=OCR_CONFIG)
-    return texto_invertido if len(texto_invertido.strip()) > len(texto_normal.strip()) else texto_normal
+    results = reader.readtext(img, detail=0, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    if not results:
+        return ""
+    # Pega o maior texto reconhecido
+    return max(results, key=len)
 
 def limpar_texto(texto):
     return re.sub(r'[^A-Z0-9]', '', texto.strip().upper())
@@ -120,7 +123,7 @@ model.iou = 0.1
 model.augment = False
 
 # --- teste com imagem ---
-frame = cv2.imread(str(base_dir / 'imagens/teste16.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste21.jpg'))
 coordenadas = detectar_e_recortar_placa(frame, model)
 placas = aplicar_pre_processamento(frame, coordenadas)
 
