@@ -205,7 +205,7 @@ model.iou = 0.1
 model.augment = False
 
 # ---------------------- TESTE ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste19.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste26.jpg'))
 coordenadas = detectar_e_recortar_placa(frame, model)
 placas = aplicar_pre_processamento(frame, coordenadas)
 
