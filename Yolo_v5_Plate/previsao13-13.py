@@ -18,10 +18,9 @@ CORRECOES = {
     '0': ['O', 'Q'], '1': ['I', 'L'], '2': ['Z'], '4': ['A'], '5': ['S'], '6': ['G'], '8': ['B'],
     'O': ['0', 'Q'], 'I': ['1', 'L'], 'Z': ['2'], 'S': ['5'], 'G': ['6']
 }
-
 MAX_ERROS = 1  # permite 1 caractere errado no consenso
 
-# ---------------------- PIPELINE BÁSICO ----------------------
+# ---------------------- FUNÇÕES ----------------------
 def detectar_e_recortar_placa(frame, modelo, min_width=50, min_height=20):
     results = modelo(frame)
     boxes = results.xyxy[0]
@@ -57,98 +56,33 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.07, crop_ratio_
         placas_processadas.append(img_thresh)
     return placas_processadas
 
-# ---------------------- NOVO: CONTORNOS + MÁSCARA ----------------------
-def encontrar_contornos_caracteres(img_bin, min_area=100, max_chars=7, debug=True):
-    """
-    Encontra contornos de caracteres (não bounding boxes) e aplica filtros
-    para descartar placa inteira/sujeira. Retorna lista de contornos
-    já ordenados da esquerda para a direita.
-    """
-    # Inverte para letras = branco
+def encontrar_contornos_caracteres(img_bin, min_area=100, max_chars=7, debug=False):
     img_inv = cv2.bitwise_not(img_bin)
-
     contornos, _ = cv2.findContours(img_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     altura_img = img_bin.shape[0]
-
     selecionados = []
     for cnt in contornos:
         x, y, w, h = cv2.boundingRect(cnt)
         area = w * h
-        # Filtros para manter apenas candidatos a caractere
-        if area < min_area:
-            continue
-        if h < altura_img * 0.4:
-            continue
-        if w > altura_img * 1.2:
+        if area < min_area or h < altura_img * 0.4 or w > altura_img * 1.2:
             continue
         selecionados.append((x, y, w, h, cnt))
-
-    # Ordena da esquerda para a direita e limita quantidade
     selecionados.sort(key=lambda t: t[0])
     selecionados = selecionados[:max_chars]
-
-    if debug:
-        dbg = cv2.cvtColor(img_bin, cv2.COLOR_GRAY2BGR)
-        for i, (x, y, w, h, _) in enumerate(selecionados):
-            cv2.rectangle(dbg, (x, y), (x+w, y+h), (0, 255, 0), 2)
-            cv2.putText(dbg, str(i+1), (x, y-5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.imshow("Caracteres Contornados", dbg)
-
-    # Separa listas de contornos e boxes (se precisar em outro lugar)
     contornos_ordenados = [t[4] for t in selecionados]
     boxes_ordenadas = [(t[0], t[1], t[2], t[3]) for t in selecionados]
     return contornos_ordenados, boxes_ordenadas
 
-def filtrar_externo_por_contornos(img_bin, contornos, dilatacao=1, mostrar=True):
-    """
-    Cria uma máscara preenchendo apenas os contornos selecionados e
-    deixa tudo fora deles branco (255). Opcionalmente dilata a máscara
-    para não perder traços finos das letras.
-    """
-    # Máscara preta
+def filtrar_externo_por_contornos(img_bin, contornos, dilatacao=1):
     mask = np.zeros_like(img_bin)
-    # Desenha contornos preenchidos
     cv2.drawContours(mask, contornos, -1, 255, thickness=cv2.FILLED)
-
-    # Pequena dilatação para garantir cobertura dos traços
-    if dilatacao and dilatacao > 0:
+    if dilatacao > 0:
         k = cv2.getStructuringElement(cv2.MORPH_RECT, (2*dilatacao+1, 2*dilatacao+1))
         mask = cv2.dilate(mask, k, iterations=1)
-
-    # Saída toda branca; copia apenas onde a máscara cobre letras
     out = np.full_like(img_bin, 255)
     out[mask == 255] = img_bin[mask == 255]
-
-    if mostrar:
-        cv2.imshow("Placa Filtrada", out)
-
     return out
 
-# ---------------------- OCR NA PLACA FILTRADA ----------------------
-def aplicar_ocr_placa_filtrada(placa_binaria, mostrar_debug=True):
-    contornos, _ = encontrar_contornos_caracteres(
-        placa_binaria, min_area=100, max_chars=7, debug=mostrar_debug
-    )
-
-    # Se não achou contornos, tenta OCR direto na imagem binária
-    if not contornos:
-        img_para_ocr = placa_binaria
-    else:
-        img_para_ocr = filtrar_externo_por_contornos(
-            placa_binaria, contornos, dilatacao=1, mostrar=mostrar_debug
-        )
-
-    results = reader.readtext(img_para_ocr, detail=0, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-    if not results:
-        return ""
-
-    texto = "".join(results)
-    texto = limpar_texto(texto)
-    formato = identificar_formato(texto)
-    return aplicar_correcoes(texto, formato)
-
-# ---------------------- UTILITÁRIOS ----------------------
 def limpar_texto(texto):
     return re.sub(r'[^A-Z0-9]', '', texto.strip().upper())
 
@@ -190,6 +124,20 @@ def consenso_textos(textos):
             textos_validos.append(t)
     return textos_validos
 
+def aplicar_ocr_placa_filtrada(placa_binaria):
+    contornos, _ = encontrar_contornos_caracteres(placa_binaria, min_area=100, max_chars=7, debug=False)
+    if not contornos:
+        img_para_ocr = placa_binaria
+    else:
+        img_para_ocr = filtrar_externo_por_contornos(placa_binaria, contornos, dilatacao=1)
+    results = reader.readtext(img_para_ocr, detail=0, allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    if not results:
+        return ""
+    texto = "".join(results)
+    texto = limpar_texto(texto)
+    formato = identificar_formato(texto)
+    return aplicar_correcoes(texto, formato)
+
 def desenhar_resultados(frame, coordenadas, textos):
     for i, coord in enumerate(coordenadas):
         x1, y1, x2, y2 = coord
@@ -204,19 +152,32 @@ model.conf = 0.2
 model.iou = 0.1
 model.augment = False
 
-# ---------------------- TESTE ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste19.jpg'))
-coordenadas = detectar_e_recortar_placa(frame, model)
-placas = aplicar_pre_processamento(frame, coordenadas)
+# ---------------------- CAPTURA DA CÂMERA ----------------------
+cap = cv2.VideoCapture(0)
 
-for i, placa_proc in enumerate(placas):
-    cv2.imshow(f"Placa Processada {i+1}", placa_proc)
+if not cap.isOpened():
+    print("Erro ao abrir a câmera")
+    exit()
 
-# OCR na placa filtrada por contornos (sem recortar caractere individualmente)
-textos = [aplicar_ocr_placa_filtrada(p, mostrar_debug=True) for p in placas]
-textos = consenso_textos(textos)
-desenhar_resultados(frame, coordenadas, textos)
+frame_count = 0
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
 
-cv2.imshow("Resultado Final", frame)
-cv2.waitKey(0)
+    frame_count += 1
+    if frame_count % 5 != 0:  # processa apenas a cada 5 frames
+        continue
+
+    coordenadas = detectar_e_recortar_placa(frame, model)
+    placas = aplicar_pre_processamento(frame, coordenadas)
+    textos = [aplicar_ocr_placa_filtrada(p) for p in placas]
+    textos = consenso_textos(textos)
+    desenhar_resultados(frame, coordenadas, textos)
+
+    cv2.imshow("Resultado Câmera", frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
 cv2.destroyAllWindows()
