@@ -37,6 +37,8 @@ import os
 import re
 import cv2
 import numpy as np
+import pytesseract
+import string
 
 # ----------------------------- Utilidades ------------------------------------
 
@@ -172,37 +174,60 @@ class TemplateSet:
         glyphs: Dict[str, List[np.ndarray]] = {}
         if not os.path.isdir(folder):
             raise FileNotFoundError(f"Pasta de templates não encontrada: {folder}")
-        for fn in os.listdir(folder):
-            path = os.path.join(folder, fn)
-            if not os.path.isfile(path):
-                continue
-            name, ext = os.path.splitext(fn)
-            if ext.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.tif'):
-                continue
-            ch = name.upper()
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-            if img is None:
-                continue
-            # binariza e ajusta para alvo
-            _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            img = _resize_keep_aspect(img, target_size)
-            glyphs.setdefault(ch, []).append(img)
+
+        for item in os.listdir(folder):
+            path = os.path.join(folder, item)
+            if os.path.isdir(path):
+                # Se for pasta, pega todos os arquivos dentro como múltiplos templates
+                for fn in os.listdir(path):
+                    fn_path = os.path.join(path, fn)
+                    if not os.path.isfile(fn_path):
+                        continue
+                    name, ext = os.path.splitext(fn)
+                    if ext.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.tif'):
+                        continue
+                    ch = item.upper()  # nome da pasta = caractere
+                    img = cv2.imread(fn_path, cv2.IMREAD_GRAYSCALE)
+                    if img is None:
+                        continue
+                    _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                    img = _resize_keep_aspect(img, target_size)
+                    glyphs.setdefault(ch, []).append(img)
+            elif os.path.isfile(path):
+                # Se for arquivo, pega como template único
+                name, ext = os.path.splitext(item)
+                if ext.lower() not in ('.png', '.jpg', '.jpeg', '.bmp', '.tif'):
+                    continue
+                ch = name.upper()
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    continue
+                _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                img = _resize_keep_aspect(img, target_size)
+                glyphs.setdefault(ch, []).append(img)  # mantém lista para compatibilidade
+
         if not glyphs:
             raise RuntimeError(f"Nenhum template válido encontrado em {folder}")
         return TemplateSet(glyphs=glyphs, size=target_size)
-
+    
     def match(self, roi: np.ndarray) -> Tuple[str, float]:
-        # roi binário no mesmo tamanho de self.size
+        """
+        Compara o ROI com todos os templates disponíveis e retorna
+        o caractere com melhor score e seu valor.
+        """
         roi = _resize_keep_aspect(roi, self.size)
         best_char, best_score = '?', -1.0
-        for ch, samples in self.glyphs.items():
-            for t in samples:
-                # NCC (correlação normalizada)
-                res = cv2.matchTemplate(roi, t, cv2.TM_CCOEFF_NORMED)
+
+        for ch, templates in self.glyphs.items():  # templates já é lista
+            for tmpl in templates:
+                # garante mesmo tamanho
+                tmpl_resized = _resize_keep_aspect(tmpl, self.size)
+                res = cv2.matchTemplate(roi, tmpl_resized, cv2.TM_CCOEFF_NORMED)
                 score = float(res[0][0])
                 if score > best_score:
                     best_char, best_score = ch, score
-        return best_char, best_score
+
+        return best_char, best_score   
 
 
 # --------------------------- Validação de Padrões -----------------------------
@@ -421,6 +446,62 @@ class PlateReader:
             adj_chars = adj_chars[:7]
             
         return text, adj_chars
+    
+    def read_from_rois_hybrid(self, rois, plate_hint='auto', conf_threshold=0.5):
+        """
+        Lê caracteres usando template matching + Tesseract, escolhendo dinamicamente
+        o melhor resultado caractere por caractere.
+        """
+        # --- TEMPLATE MATCHING ---
+        texto_template, confs_template = self.read_from_rois(rois, plate_hint)
+
+        texto_final = ""
+        confs_final = []
+
+        for i, roi in enumerate(rois):
+            char_template = texto_template[i] if i < len(texto_template) else ""
+
+            # Garante que conf_template seja float
+            conf_template = 0.0
+            if i < len(confs_template):
+                val = confs_template[i]
+                if isinstance(val, (tuple, list)):
+                    # pega o primeiro valor e tenta converter para float
+                    try:
+                        conf_template = float(val[0])
+                    except Exception:
+                        conf_template = 0.0
+                else:
+                    try:
+                        conf_template = float(val)
+                    except Exception:
+                        conf_template = 0.0
+
+            # OCR com Tesseract
+            config = (
+                r'--oem 3 --psm 10 '
+                r'-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+            )
+            char_tess = pytesseract.image_to_string(roi, config=config).strip()
+
+            if len(char_tess) > 1:
+                char_tess = char_tess[0]
+            if char_tess not in string.ascii_uppercase + string.digits:
+                char_tess = ""
+
+            # Decisão caractere a caractere
+            if conf_template >= conf_threshold or not char_tess:
+                chosen = char_template
+                chosen_conf = conf_template
+            else:
+                chosen = char_tess
+                chosen_conf = 0.7  
+
+            texto_final += chosen
+            confs_final.append(chosen_conf)
+
+
+        return texto_final, confs_final
 
 
 # ------------------------------ CLI opcional ---------------------------------

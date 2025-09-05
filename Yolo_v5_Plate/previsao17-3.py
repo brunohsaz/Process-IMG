@@ -1,6 +1,7 @@
 import torch
 from pathlib import Path
 import cv2
+import os
 import warnings
 import numpy as np
 import sys
@@ -100,9 +101,9 @@ def desenhar_resultados(frame, coordenadas, textos):
             print(f"Placa: {textos[i]}")
 
 # ---------------------- EXECUÇÃO HÍBRIDA (MELHOR DOS DOIS MUNDOS) ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste29.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste30.jpg'))
 if frame is None:
-    print(f"Erro: Não foi possível carregar a imagem")
+    print(f"Erro: Não foi possível carregar a imagem em 'imagens/teste26.jpg'")
     exit()
 
 coordenadas = detectar_e_recortar_placa(frame, model)
@@ -110,19 +111,19 @@ placas_processadas = aplicar_pre_processamento(frame, coordenadas) # Usamos seu 
 
 textos = []
 for i, placa_proc in enumerate(placas_processadas):
-    # 1. Usamos sua lógica para extrair os ROIs dos caracteres
     rois_caracteres = extrair_rois_dos_caracteres(placa_proc)
 
-    # Para debug, vamos visualizar os ROIs extraídos
     for j, roi in enumerate(rois_caracteres):
-        cv2.imshow(f"Placa {i+1} - ROI {j+1}", roi)
-    
+        nome_arquivo = f"roi_temp_{i+1}_{j+1}.jpg"
+        cv2.imwrite(nome_arquivo, roi)        # salva no disco
+        os.startfile(nome_arquivo)            # abre no visualizador padrão do Windows
+
     if rois_caracteres:
-        # 2. Passamos a lista de ROIs para o novo método do PlateReader
         texto, confs = reader.read_from_rois(rois_caracteres, plate_hint='auto')
         textos.append(texto)
     else:
-        textos.append("") # Se nenhum ROI foi encontrado
+        textos.append("")
+
 
 desenhar_resultados(frame, coordenadas, textos)
 

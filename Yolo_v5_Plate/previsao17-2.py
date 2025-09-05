@@ -59,35 +59,53 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.07, crop_ratio_
 
 def extrair_rois_dos_caracteres(placa_binaria, min_area=100, max_chars=7):
     """
-    Usa a imagem binária da placa para encontrar e retornar uma lista de ROIs
-    (imagens individuais) para cada caractere detectado.
-    Os ROIs são retornados com CARACTERE BRANCO e FUNDO PRETO.
+    Usa a imagem binária da placa para encontrar ROIs (caracteres).
+    Agora com filtros adicionais para reduzir falsos positivos.
+    Retorna caracteres com letra branca e fundo preto.
     """
-    img_inv = cv2.bitwise_not(placa_binaria)  # Inverte para encontrar contornos de objetos brancos
+    img_inv = cv2.bitwise_not(placa_binaria)  
     contornos, _ = cv2.findContours(img_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    altura_img = placa_binaria.shape[0]
+    altura_img, largura_img = placa_binaria.shape[:2]
 
-    selecionados = []
+    candidatos = []
     for cnt in contornos:
         x, y, w, h = cv2.boundingRect(cnt)
         area = w * h
-        if area < min_area or h < altura_img * 0.4 or w > altura_img * 1.2:
+
+        # --- FILTROS ---
+        if area < min_area:
             continue
-        selecionados.append((x, y, w, h))
+        if h < altura_img * 0.4 or h > altura_img * 0.95:  
+            continue
+        if w > altura_img * 1.2 or w < altura_img * 0.1:  
+            continue
+        if w/h > 1.2:  
+            continue
 
-    selecionados.sort(key=lambda t: t[0])
-    selecionados = selecionados[:max_chars]
+        candidatos.append((x, y, w, h))
 
+    # --- Ordenar pela posição X ---
+    candidatos.sort(key=lambda t: t[0])
+
+    # --- Calcular largura média e remover outliers ---
+    if candidatos:
+        larguras = [w for (_, _, w, _) in candidatos]
+        largura_media = np.mean(larguras)
+        candidatos = [
+            (x, y, w, h) for (x, y, w, h) in candidatos
+            if 0.5*largura_media <= w <= 1.8*largura_media
+        ]
+
+    # --- Limitar ao número máximo de caracteres ---
+    candidatos = candidatos[:max_chars]
+
+    # --- Recortar ROIs ---
     rois = []
-    for (x, y, w, h) in selecionados:
-        # 1. Recorta o ROI (que tem letra preta, fundo branco)
+    for (x, y, w, h) in candidatos:
         roi = placa_binaria[y:y+h, x:x+w]
-        
-        # 2. INVERTE AS CORES para o formato correto (letra branca, fundo preto)
-        roi = cv2.bitwise_not(roi)
-        
+        roi = cv2.bitwise_not(roi)  
         rois.append(roi)
-        
+
     return rois
 
 def desenhar_resultados(frame, coordenadas, textos):
@@ -100,7 +118,7 @@ def desenhar_resultados(frame, coordenadas, textos):
             print(f"Placa: {textos[i]}")
 
 # ---------------------- EXECUÇÃO HÍBRIDA (MELHOR DOS DOIS MUNDOS) ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste29.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste20.jpg'))
 if frame is None:
     print(f"Erro: Não foi possível carregar a imagem")
     exit()
@@ -119,7 +137,8 @@ for i, placa_proc in enumerate(placas_processadas):
     
     if rois_caracteres:
         # 2. Passamos a lista de ROIs para o novo método do PlateReader
-        texto, confs = reader.read_from_rois(rois_caracteres, plate_hint='auto')
+        # texto, confs = reader.read_from_rois(rois_caracteres, plate_hint='auto')
+        texto, confs = reader.read_from_rois_hybrid(rois_caracteres, plate_hint='auto')
         textos.append(texto)
     else:
         textos.append("") # Se nenhum ROI foi encontrado
