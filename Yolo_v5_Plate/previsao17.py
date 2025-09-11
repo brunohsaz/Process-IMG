@@ -4,6 +4,7 @@ import cv2
 import warnings
 import numpy as np
 import sys
+import requests
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from lib.plate_reader import PlateReader
 
@@ -100,7 +101,7 @@ def desenhar_resultados(frame, coordenadas, textos):
             print(f"Placa: {textos[i]}")
 
 # ---------------------- EXECUÇÃO HÍBRIDA (MELHOR DOS DOIS MUNDOS) ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste29.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste33.jpg'))
 if frame is None:
     print(f"Erro: Não foi possível carregar a imagem")
     exit()
@@ -121,6 +122,9 @@ for i, placa_proc in enumerate(placas_processadas):
         # 2. Passamos a lista de ROIs para o novo método do PlateReader
         texto, confs = reader.read_from_rois(rois_caracteres, plate_hint='auto')
         textos.append(texto)
+        url = "https://localhost:4040/api/veiculos/placa/" + texto
+
+        resposta = requests.get(url, verify=False)
     else:
         textos.append("") # Se nenhum ROI foi encontrado
 
