@@ -53,7 +53,7 @@ def aplicar_pre_processamento(frame, coordenadas, crop_ratio_x=0.07, crop_ratio_
         img_cinza = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         img_suavizada = cv2.bilateralFilter(img_cinza, 9, 75, 75)
         _, img_thresh = cv2.threshold(img_suavizada, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
         img_thresh = cv2.morphologyEx(img_thresh, cv2.MORPH_CLOSE, kernel)
         placas_processadas.append(img_thresh)
     return placas_processadas
@@ -101,7 +101,7 @@ def desenhar_resultados(frame, coordenadas, textos):
             print(f"Placa: {textos[i]}")
 
 # ---------------------- EXECUÇÃO HÍBRIDA (MELHOR DOS DOIS MUNDOS) ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste32.jpg'))
+frame = cv2.imread(str(base_dir / 'imagens/teste35.png'))
 if frame is None:
     print(f"Erro: Não foi possível carregar a imagem")
     exit()
@@ -122,9 +122,9 @@ for i, placa_proc in enumerate(placas_processadas):
         # 2. Passamos a lista de ROIs para o novo método do PlateReader
         texto, confs = reader.read_from_rois(rois_caracteres, plate_hint='auto')
         textos.append(texto)
-        url = "https://localhost:4040/api/veiculos/placa/" + texto
+        # url = "https://localhost:4040/api/veiculos/placa/" + texto
 
-        resposta = requests.get(url, verify=False)
+        # resposta = requests.get(url, verify=False)
     else:
         textos.append("") # Se nenhum ROI foi encontrado
 
