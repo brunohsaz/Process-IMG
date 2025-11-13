@@ -101,7 +101,7 @@ def desenhar_resultados(frame, coordenadas, textos):
             print(f"Placa: {textos[i]}")
 
 # ---------------------- EXECUÇÃO HÍBRIDA (MELHOR DOS DOIS MUNDOS) ----------------------
-frame = cv2.imread(str(base_dir / 'imagens/teste35.png'))
+frame = cv2.imread(str(base_dir / 'imagens/teste36.jpg'))
 if frame is None:
     print(f"Erro: Não foi possível carregar a imagem")
     exit()
