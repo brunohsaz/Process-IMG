@@ -1,2 +1,0 @@
-pip install cv2 pytesseract ultralytics numpy pandas pathlib yolov5
-https://github.com/UB-Mannheim/tesseract/wiki
