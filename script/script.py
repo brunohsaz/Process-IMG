@@ -97,9 +97,9 @@ def desenhar_resultados(frame, coordenadas, textos):
     for i, coord in enumerate(coordenadas):
         x1, y1, x2, y2 = coord
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-        if i < len(textos) and textos[i]:
-            cv2.putText(frame, textos[i], (x1, y1-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+        # if i < len(textos) and textos[i]:
+        #     cv2.putText(frame, textos[i], (x1, y1-10),
+        #                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
             # print(f"Placa: {textos[i]}")
 
 def caracteres_iguais(a, b):
@@ -119,7 +119,7 @@ if not cap.isOpened():
 ultima_placa_reconhecida = None
 texto_anterior = ""
 ultimo_request = 0
-intervalo_request = 5  # padrão inicial (segundos)
+intervalo_request = 5
 
 target_fps = 30
 target_interval = 1.0 / target_fps
@@ -134,19 +134,17 @@ while True:
 
     agora = time.time()
 
-    # se ainda estiver dentro do intervalo, apenas exibe o frame atual normalmente
     if (agora - ultimo_request) < intervalo_request:
-        cv2.imshow("Detecção de Placas", frame)
+        frame_redimensionado = cv2.resize(frame, (1024, 600))
+        cv2.imshow("Detecção de Placas", frame_redimensionado)        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-
-        # controle de FPS aqui também
+        
         loop_time = time.time() - start
         sleep_time = max(0, target_interval - loop_time)
         time.sleep(sleep_time)
         continue
 
-    # processa normalmente após o intervalo
     coordenadas = detectar_e_recortar_placa(frame, model)
     placas_processadas = aplicar_pre_processamento(frame, coordenadas)
     textos = []
@@ -179,7 +177,7 @@ while True:
                 dados = resposta.json()
                 ultima_placa_reconhecida = dados.get("placa")
                 if dados.get("acesso"):
-                    intervalo_request = 22
+                    intervalo_request = 24
                 else:
                     intervalo_request = 3
             else:
@@ -187,12 +185,12 @@ while True:
                 intervalo_request = 3
 
     desenhar_resultados(frame, coordenadas, textos)
-    cv2.imshow("Detecção de Placas", frame)
+    frame_redimensionado = cv2.resize(frame, (1024, 600))
+    cv2.imshow("Detecção de Placas", frame_redimensionado)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-
-    # controle de FPS principal
+    
     loop_time = time.time() - start
     sleep_time = max(0, target_interval - loop_time)
     time.sleep(sleep_time)
