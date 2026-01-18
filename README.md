@@ -2,13 +2,13 @@
 Destinado ao processamento digital de imagens utilizando ferramentas como OpenCV e métodos de visão computacional além dos convencionais
 
 ## Instalação
-Rode esse comando no terminal do projeto
+Instale o python
+Rode esse comando no terminal na pasta raiz do projeto Process-IMG
 ```bash
 pip install cv2 pytesseract ultralytics numpy pandas pathlib yolov5
 ```
 
 ## Execução
-Use o comando 
 ```bash
 python <ARQUIVO.PY>
 ```
@@ -19,3 +19,8 @@ Verifique a pasta D:\outros sistemas\Process-IMG\backup\Yolo_v5_Plate, nela exis
 
 ## Links úteis
 https://github.com/UB-Mannheim/tesseract/wiki
+
+### Contato
+Discord: showtriz
+Email: beatriznespolid@gmail.com
+Telefone: peça para o orientador
